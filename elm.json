@@ -1,7 +1,7 @@
 {
     "type": "package",
     "name": "MartinSStewart/elm-box-packing",
-    "summary": "Efficiently pack rectangles together. Useful for creating a texture atlas or sprite sheet.",
+    "summary": "Pack rectangles closely together. Useful for texture atlases and sprite sheets.",
     "license": "BSD-3-Clause",
     "version": "1.0.0",
     "exposed-modules": [

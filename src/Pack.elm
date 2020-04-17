@@ -32,27 +32,27 @@ import Quantity exposing (Quantity(..))
 
 
 {-| -}
-type alias PackingData units a =
-    { width : Quantity Int units
-    , height : Quantity Int units
-    , boxes : List (PlacedBox units a)
+type alias PackingData number units a =
+    { width : Quantity number units
+    , height : Quantity number units
+    , boxes : List (PlacedBox number units a)
     }
 
 
 {-| -}
-type alias PlacedBox units a =
-    { x : Quantity Int units
-    , y : Quantity Int units
-    , width : Quantity Int units
-    , height : Quantity Int units
+type alias PlacedBox number units a =
+    { x : Quantity number units
+    , y : Quantity number units
+    , width : Quantity number units
+    , height : Quantity number units
     , data : a
     }
 
 
 {-| -}
-type alias Box units a =
-    { width : Quantity Int units
-    , height : Quantity Int units
+type alias Box number units a =
+    { width : Quantity number units
+    , height : Quantity number units
     , data : a
     }
 
@@ -66,7 +66,7 @@ type alias ImageBox a =
 
 {-| -}
 type alias TextureAtlas a =
-    { packingData : PackingData Pixels a, atlas : Image }
+    { packingData : PackingData Int Pixels a, atlas : Image }
 
 
 {-| -}
@@ -89,7 +89,7 @@ quantityCodec =
 
 
 {-| -}
-packingDataCodec : Codec a -> Codec (PackingData units a)
+packingDataCodec : Codec a -> Codec (PackingData Int units a)
 packingDataCodec dataCodec =
     Codec.object PackingData
         |> Codec.field .width quantityCodec
@@ -98,7 +98,7 @@ packingDataCodec dataCodec =
         |> Codec.buildObject
 
 
-placeBoxCodec : Codec a -> Codec (PlacedBox units a)
+placeBoxCodec : Codec a -> Codec (PlacedBox Int units a)
 placeBoxCodec dataCodec =
     Codec.object PlacedBox
         |> Codec.field .x quantityCodec
@@ -109,7 +109,7 @@ placeBoxCodec dataCodec =
         |> Codec.buildObject
 
 
-mapPackingData : (a -> b) -> PackingData units a -> PackingData units b
+mapPackingData : (a -> b) -> PackingData number units a -> PackingData number units b
 mapPackingData mapFunc packedData =
     { width = packedData.width
     , height = packedData.height
@@ -120,24 +120,24 @@ mapPackingData mapFunc packedData =
     }
 
 
-type alias Config units =
-    { minimumWidth : Quantity Int units
-    , nearestPowerOfTwoSize : Bool
-    , spacing : Quantity Int units
+type alias Config number units =
+    { minimumWidth : Quantity number units
+    , powerOfTwoSize : Bool
+    , spacing : Quantity number units
     }
 
 
-defaultConfig : Config units
+defaultConfig : Config number units
 defaultConfig =
-    { minimumWidth = Quantity.Quantity 128, nearestPowerOfTwoSize = True, spacing = Quantity.Quantity 1 }
+    { minimumWidth = Quantity.Quantity 128, powerOfTwoSize = True, spacing = Quantity.Quantity 1 }
 
 
 {-| Pack images together to create a single texture atlas image.
 -}
-textureAtlas : Config Pixels -> List (ImageBox a) -> TextureAtlas a
+textureAtlas : Config Int Pixels -> List (ImageBox a) -> TextureAtlas a
 textureAtlas config images =
     let
-        packedData : PackingData Pixels ( Image, a )
+        packedData : PackingData Int Pixels ( Image, a )
         packedData =
             images
                 |> List.map
@@ -199,12 +199,12 @@ rawQuantity (Quantity.Quantity value) =
 
 {-| Pack generic boxes together.
 -}
-pack : Config units -> List (Box units a) -> PackingData units a
+pack : Config number units -> List (Box number units a) -> PackingData number units a
 pack config list =
     let
         validatedConfig =
             { minimumWidth = Quantity.max Quantity.zero config.minimumWidth
-            , nearestPowerOfTwoSize = config.nearestPowerOfTwoSize
+            , nearestPowerOfTwoSize = config.powerOfTwoSize
             , spacing = Quantity.max Quantity.zero config.spacing
             }
 
@@ -217,8 +217,8 @@ pack config list =
                 |> Quantity.minimum
                 |> Maybe.withDefault config.minimumWidth
                 |> Quantity.max config.minimumWidth
-                |> (if config.nearestPowerOfTwoSize then
-                        rawQuantity >> toFloat >> logBase 2 >> ceiling >> (\a -> a ^ 2) >> Quantity.Quantity
+                |> (if config.powerOfTwoSize then
+                        nextPowerOf2
 
                     else
                         identity
@@ -236,19 +236,32 @@ pack config list =
         rest
 
 
-rowMaxY : Quantity Int units -> List (PlacedBox units a) -> Quantity Int units
+nextPowerOf2 : Quantity number units -> Quantity number units
+nextPowerOf2 (Quantity.Quantity value) =
+    let
+        helperPlus n =
+            if 2 ^ n < value then
+                helperPlus (n + 1)
+
+            else
+                2 ^ n
+    in
+    helperPlus 0 |> Quantity.Quantity
+
+
+rowMaxY : Quantity number units -> List (PlacedBox number units a) -> Quantity number units
 rowMaxY offset row =
     row |> List.map (\box -> Quantity.plus box.y box.height) |> Quantity.maximum |> Maybe.withDefault offset
 
 
 packHelper :
-    Quantity Int units
-    -> Quantity Int units
-    -> Quantity Int units
-    -> List (List (PlacedBox units a))
-    -> List (PlacedBox units a)
-    -> List (Box units a)
-    -> PackingData units a
+    Quantity number units
+    -> Quantity number units
+    -> Quantity number units
+    -> List (List (PlacedBox number units a))
+    -> List (PlacedBox number units a)
+    -> List (Box number units a)
+    -> PackingData number units a
 packHelper spacing maxWidth y rows lastRow boxes =
     let
         { row, rest } =
@@ -271,13 +284,13 @@ packHelper spacing maxWidth y rows lastRow boxes =
 
 
 placeRow :
-    Quantity Int units
-    -> List (PlacedBox units a)
-    -> Quantity Int units
-    -> Quantity Int units
-    -> Quantity Int units
-    -> List (Box units a)
-    -> { row : List (PlacedBox units a), rest : List (Box units a) }
+    Quantity number units
+    -> List (PlacedBox number units a)
+    -> Quantity number units
+    -> Quantity number units
+    -> Quantity number units
+    -> List (Box number units a)
+    -> { row : List (PlacedBox number units a), rest : List (Box number units a) }
 placeRow spacing currentList x y maxWidth list =
     case list of
         head :: rest ->
