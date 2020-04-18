@@ -165,7 +165,7 @@ type alias Config number units =
 
 defaultConfig : Config number units
 defaultConfig =
-    { minimumWidth = Quantity.Quantity 128, powerOfTwoSize = True, spacing = Quantity.zero }
+    { minimumWidth = Quantity.Quantity 128, powerOfTwoSize = True, spacing = Quantity.Quantity 1 }
 
 
 boxWidth : { a | width : Quantity number units } -> Quantity number units
