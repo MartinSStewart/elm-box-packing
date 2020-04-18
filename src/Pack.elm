@@ -2,6 +2,7 @@ module Pack exposing
     ( pack, defaultConfig, Box, Config, PackingData, PlacedBox
     , textureAtlas, ImageBox, TextureAtlas
     , textureAtlasCodec, packingDataCodec
+    , packingDataCodecFloat
     )
 
 {-|
@@ -39,7 +40,9 @@ type alias PackingData number units a =
     }
 
 
-{-| -}
+{-| Our box, now placed within a larger rectangle.
+The width and height of these placed boxes will be positive even if the corresponding `Box` had a negative width or height.
+-}
 type alias PlacedBox number units a =
     { x : Quantity number units
     , y : Quantity number units
@@ -88,6 +91,11 @@ quantityCodec =
     Codec.unsignedInt32 Bytes.BE |> Codec.map Quantity.Quantity rawQuantity
 
 
+quantityCodecFloat : Codec (Quantity Float units)
+quantityCodecFloat =
+    Codec.float64 |> Codec.map Quantity.Quantity rawQuantity
+
+
 {-| -}
 packingDataCodec : Codec a -> Codec (PackingData Int units a)
 packingDataCodec dataCodec =
@@ -98,6 +106,16 @@ packingDataCodec dataCodec =
         |> Codec.buildObject
 
 
+{-| -}
+packingDataCodecFloat : Codec a -> Codec (PackingData Float units a)
+packingDataCodecFloat dataCodec =
+    Codec.object PackingData
+        |> Codec.field .width quantityCodecFloat
+        |> Codec.field .height quantityCodecFloat
+        |> Codec.field .boxes (Codec.list (placeBoxCodecFloat dataCodec))
+        |> Codec.buildObject
+
+
 placeBoxCodec : Codec a -> Codec (PlacedBox Int units a)
 placeBoxCodec dataCodec =
     Codec.object PlacedBox
@@ -105,6 +123,17 @@ placeBoxCodec dataCodec =
         |> Codec.field .y quantityCodec
         |> Codec.field .width quantityCodec
         |> Codec.field .height quantityCodec
+        |> Codec.field .data dataCodec
+        |> Codec.buildObject
+
+
+placeBoxCodecFloat : Codec a -> Codec (PlacedBox Float units a)
+placeBoxCodecFloat dataCodec =
+    Codec.object PlacedBox
+        |> Codec.field .x quantityCodecFloat
+        |> Codec.field .y quantityCodecFloat
+        |> Codec.field .width quantityCodecFloat
+        |> Codec.field .height quantityCodecFloat
         |> Codec.field .data dataCodec
         |> Codec.buildObject
 
@@ -120,6 +149,13 @@ mapPackingData mapFunc packedData =
     }
 
 
+{-|
+
+  - `minimumWidth` sets how wide the container is provided there aren't any boxes that are too wide to fit.
+  - `powerOfTwoSize` decides if the width and height of the container should snap to a power of two size. Can be useful for creating texture atlases.
+  - `spacing` controls how much separation there are between boxes. This does not affect spacing between boxes and the edge of the container.
+
+-}
 type alias Config number units =
     { minimumWidth : Quantity number units
     , powerOfTwoSize : Bool
@@ -129,7 +165,17 @@ type alias Config number units =
 
 defaultConfig : Config number units
 defaultConfig =
-    { minimumWidth = Quantity.Quantity 128, powerOfTwoSize = True, spacing = Quantity.Quantity 1 }
+    { minimumWidth = Quantity.Quantity 128, powerOfTwoSize = True, spacing = Quantity.zero }
+
+
+boxWidth : { a | width : Quantity number units } -> Quantity number units
+boxWidth =
+    .width >> Quantity.abs
+
+
+boxHeight : { a | height : Quantity number units } -> Quantity number units
+boxHeight =
+    .height >> Quantity.abs
 
 
 {-| Pack images together to create a single texture atlas image.
@@ -209,11 +255,11 @@ pack config list =
             }
 
         sortedBoxes =
-            Quantity.sortBy (\box -> Quantity.times box.width box.height) list
+            Quantity.sortBy (\box -> Quantity.times (boxWidth box) (boxHeight box)) list
 
         maxWidth =
             sortedBoxes
-                |> List.map .width
+                |> List.map boxWidth
                 |> Quantity.minimum
                 |> Maybe.withDefault config.minimumWidth
                 |> Quantity.max config.minimumWidth
@@ -251,7 +297,7 @@ nextPowerOf2 (Quantity.Quantity value) =
 
 rowMaxY : Quantity number units -> List (PlacedBox number units a) -> Quantity number units
 rowMaxY offset row =
-    row |> List.map (\box -> Quantity.plus box.y box.height) |> Quantity.maximum |> Maybe.withDefault offset
+    row |> List.map (\box -> Quantity.plus box.y (boxHeight box)) |> Quantity.maximum |> Maybe.withDefault offset
 
 
 packHelper :
@@ -296,12 +342,12 @@ placeRow spacing currentList x y maxWidth list =
         head :: rest ->
             let
                 nextX =
-                    Quantity.sum [ spacing, head.width, x ]
+                    Quantity.sum [ spacing, boxWidth head, x ]
             in
             if nextX |> Quantity.lessThanOrEqualTo maxWidth then
                 placeRow
                     spacing
-                    ({ x = x, y = y, width = head.width, height = head.height, data = head.data } :: currentList)
+                    ({ x = x, y = y, width = boxWidth head, height = boxHeight head, data = head.data } :: currentList)
                     nextX
                     y
                     maxWidth
