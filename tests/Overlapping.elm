@@ -4,51 +4,49 @@ import Quantity exposing (Quantity)
 import Set exposing (Set)
 
 
-type alias VectorMath number a =
-    { add : ( number, a ) -> ( number, a ) -> ( number, a )
-    , multiply : ( number, a ) -> ( number, a ) -> ( number, a )
-    , dotProduct : ( number, a ) -> ( number, a ) -> number
-    }
-
-
-vectorMath : VectorMath number a -> VectorMath number ( number, a )
-vectorMath previous =
-    { add = \( a, aRest ) ( b, bRest ) -> ( a + b, previous.add aRest bRest )
-    , multiply = \( a, aRest ) ( b, bRest ) -> ( a * b, previous.multiply aRest bRest )
-    , dotProduct = \( a, aRest ) ( b, bRest ) -> a * b + previous.dotProduct aRest bRest
-    }
-
-
-vectorMath1 : VectorMath number ()
-vectorMath1 =
-    { add = \( a, () ) ( b, () ) -> ( a + b, () )
-    , multiply = \( a, () ) ( b, () ) -> ( a * b, () )
-    , dotProduct = \( a, () ) ( b, () ) -> a * b
-    }
-
-
-lineIntersections : List { start : Quantity number units, end : Quantity number units } -> List ( Int, Int )
+lineIntersections : List { id : Int, start : Quantity number units, end : Quantity number units } -> List ( Int, Int )
 lineIntersections lineSegments =
     lineSegments
-        |> List.indexedMap
-            (\index { start, end } ->
-                [ { index = index, value = start }
-                , { index = index, value = end }
-                ]
-            )
-        |> List.concat
-        |> Quantity.sortBy .value
-        |> List.foldl
-            (\{ index } ( sweeping, intersections ) ->
-                if Set.member index sweeping then
-                    ( Set.remove index sweeping, intersections )
+        |> List.concatMap
+            (\{ id, start, end } ->
+                if start == end then
+                    []
 
                 else
-                    ( Set.insert index sweeping
+                    [ { id = id, isStart = True, value = Quantity.min start end }
+                    , { id = id, isStart = False, value = Quantity.max start end }
+                    ]
+            )
+        |> List.sortWith
+            (\a b ->
+                case Quantity.compare a.value b.value of
+                    EQ ->
+                        if a.isStart && not b.isStart then
+                            GT
+
+                        else if not a.isStart && b.isStart then
+                            LT
+
+                        else
+                            EQ
+
+                    LT ->
+                        LT
+
+                    GT ->
+                        GT
+            )
+        |> List.foldl
+            (\{ id, isStart } ( sweeping, intersections ) ->
+                if isStart then
+                    ( Set.insert id sweeping
                     , Set.toList sweeping
-                        |> List.map (\otherIndex -> ( min index otherIndex, max index otherIndex ))
+                        |> List.map (\otherId -> ( min id otherId, max id otherId ))
                         |> (\a -> a ++ intersections)
                     )
+
+                else
+                    ( Set.remove id sweeping, intersections )
             )
             ( Set.empty, [] )
         |> Tuple.second
@@ -65,15 +63,18 @@ boxIntersections :
     -> Set ( Int, Int )
 boxIntersections boxes =
     let
+        boxesWithIds =
+            boxes |> List.indexedMap Tuple.pair
+
         xOverlap =
-            boxes
-                |> List.map (\box -> { start = box.x, end = Quantity.plus box.x box.width })
+            boxesWithIds
+                |> List.map (\( id, box ) -> { id = id, start = box.x, end = Quantity.plus box.x box.width })
                 |> lineIntersections
                 |> Set.fromList
 
         yOverlap =
-            boxes
-                |> List.map (\box -> { start = box.y, end = Quantity.plus box.y box.height })
+            boxesWithIds
+                |> List.map (\( id, box ) -> { id = id, start = box.y, end = Quantity.plus box.y box.height })
                 |> lineIntersections
                 |> Set.fromList
     in

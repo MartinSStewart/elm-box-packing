@@ -4,7 +4,7 @@ import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer, int, list, string)
 import Overlapping
 import Pack
-import Quantity
+import Quantity exposing (Quantity(..))
 import Set
 import Test exposing (..)
 
@@ -12,11 +12,12 @@ import Test exposing (..)
 suite : Test
 suite =
     describe "Packing tests"
-        [ fuzz (fuzzPack Pack.defaultConfig) "Pack random boxes and make sure they don't overlap" <|
-            Debug.log "aaa"
-                >> validPackingData
-                >> Debug.log ""
-                >> Expect.equal Nothing
+        [ test "Pack random boxes and make sure they don't overlap" <|
+            \_ ->
+                randomBoxes
+                    |> Pack.pack Pack.defaultConfig
+                    |> validPackingData
+                    |> Expect.equal Nothing
         , test "Box with width exactly matching container width doesn't cause stack overflow" <|
             \_ ->
                 Pack.pack
@@ -66,10 +67,43 @@ overlapTests =
                     |> Expect.equal (Set.fromList [ ( 0, 1 ) ])
         , test "Check 2 non-overlapping boxes" <|
             \_ ->
-                Overlapping.boxIntersections
-                    [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
-                    , { x = Quantity.Quantity 5, y = Quantity.Quantity 2, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
-                    ]
+                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                , { x = Quantity.Quantity 5, y = Quantity.Quantity 2, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                ]
+                    |> Overlapping.boxIntersections
+                    |> Expect.equal Set.empty
+        , test "Check 2 non-overlapping boxes reverse order" <|
+            \_ ->
+                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                , { x = Quantity.Quantity 5, y = Quantity.Quantity 2, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                ]
+                    |> List.reverse
+                    |> Overlapping.boxIntersections
+                    |> Expect.equal Set.empty
+        , test "Check 2 non-overlapping vertical boxes" <|
+            \_ ->
+                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                , { x = Quantity.zero, y = Quantity.Quantity 5, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                ]
+                    |> Overlapping.boxIntersections
+                    |> Expect.equal Set.empty
+        , test "Check 2 non-overlapping vertical boxes reverse order" <|
+            \_ ->
+                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                , { x = Quantity.zero, y = Quantity.Quantity 5, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                ]
+                    |> List.reverse
+                    |> Overlapping.boxIntersections
+                    |> Expect.equal Set.empty
+        , test "a" <|
+            \_ ->
+                [ { data = (), height = Quantity 27, width = Quantity 9, x = Quantity 78, y = Quantity 150 }
+                , { data = (), height = Quantity 15, width = Quantity 12, x = Quantity 66, y = Quantity 150 }
+                , { data = (), height = Quantity 6, width = Quantity 15, x = Quantity 87, y = Quantity 120 }
+                , { data = (), height = Quantity 0, width = Quantity 15, x = Quantity 72, y = Quantity 120 }
+                , { data = (), height = Quantity 9, width = Quantity 15, x = Quantity 57, y = Quantity 120 }
+                ]
+                    |> Overlapping.boxIntersections
                     |> Expect.equal Set.empty
         ]
 
@@ -134,19 +168,48 @@ twoLinesOverlap a0 a1 b0 b1 =
     (aMax |> Quantity.greaterThan bMin) && (bMax |> Quantity.greaterThan aMin)
 
 
-fuzzBox : Fuzzer (Pack.Box Int units ())
-fuzzBox =
-    Fuzz.map2
-        (\w h ->
-            { width = Quantity.Quantity (w * 3)
-            , height = Quantity.Quantity (h * 3)
-            , data = ()
-            }
-        )
-        (Fuzz.intRange -20 20)
-        (Fuzz.intRange -20 20)
-
-
-fuzzPack : Pack.Config Int units -> Fuzzer (Pack.PackingData Int units ())
-fuzzPack config =
-    Fuzz.map (Pack.pack config) (Fuzz.list fuzzBox)
+{-| A list of random box sizes. We dont use a fuzzer because they keep causing stack overflows.
+-}
+randomBoxes =
+    [ { data = (), height = Quantity 27, width = Quantity -9 }
+    , { data = (), height = Quantity 12, width = Quantity 30 }
+    , { data = (), height = Quantity 21, width = Quantity 0 }
+    , { data = (), height = Quantity -30, width = Quantity 12 }
+    , { data = (), height = Quantity 30, width = Quantity 21 }
+    , { data = (), height = Quantity 9, width = Quantity -15 }
+    , { data = (), height = Quantity 6, width = Quantity -30 }
+    , { data = (), height = Quantity 3, width = Quantity -3 }
+    , { data = (), height = Quantity -27, width = Quantity -6 }
+    , { data = (), height = Quantity 30, width = Quantity -24 }
+    , { data = (), height = Quantity -9, width = Quantity -3 }
+    , { data = (), height = Quantity -30, width = Quantity 9 }
+    , { data = (), height = Quantity 30, width = Quantity 24 }
+    , { data = (), height = Quantity 27, width = Quantity -24 }
+    , { data = (), height = Quantity 9, width = Quantity 15 }
+    , { data = (), height = Quantity 21, width = Quantity 0 }
+    , { data = (), height = Quantity 24, width = Quantity 21 }
+    , { data = (), height = Quantity -15, width = Quantity 6 }
+    , { data = (), height = Quantity 0, width = Quantity -30 }
+    , { data = (), height = Quantity -18, width = Quantity -30 }
+    , { data = (), height = Quantity -9, width = Quantity -9 }
+    , { data = (), height = Quantity -30, width = Quantity 30 }
+    , { data = (), height = Quantity 6, width = Quantity -15 }
+    , { data = (), height = Quantity 21, width = Quantity -21 }
+    , { data = (), height = Quantity -3, width = Quantity -6 }
+    , { data = (), height = Quantity -24, width = Quantity -27 }
+    , { data = (), height = Quantity 12, width = Quantity -27 }
+    , { data = (), height = Quantity -30, width = Quantity 30 }
+    , { data = (), height = Quantity 24, width = Quantity -12 }
+    , { data = (), height = Quantity 21, width = Quantity 12 }
+    , { data = (), height = Quantity 30, width = Quantity 21 }
+    , { data = (), height = Quantity 27, width = Quantity -24 }
+    , { data = (), height = Quantity 9, width = Quantity 15 }
+    , { data = (), height = Quantity 0, width = Quantity -15 }
+    , { data = (), height = Quantity 6, width = Quantity 15 }
+    , { data = (), height = Quantity -27, width = Quantity -15 }
+    , { data = (), height = Quantity -30, width = Quantity -30 }
+    , { data = (), height = Quantity -12, width = Quantity -6 }
+    , { data = (), height = Quantity -30, width = Quantity -30 }
+    , { data = (), height = Quantity 15, width = Quantity -12 }
+    , { data = (), height = Quantity -27, width = Quantity -9 }
+    ]
