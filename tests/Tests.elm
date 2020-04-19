@@ -3,10 +3,18 @@ module Tests exposing (overlapTests, suite)
 import Expect exposing (Expectation)
 import Fuzz exposing (Fuzzer, int, list, string)
 import Overlapping
-import Pack
+import Pack exposing (Box)
 import Quantity exposing (Quantity(..))
 import Set
 import Test exposing (..)
+
+
+mapBoxes :
+    (Pack.PlacedBox number units a -> Pack.PlacedBox number units a)
+    -> Pack.PackingData number units a
+    -> Pack.PackingData number units a
+mapBoxes mapBoxFunc packingData =
+    { packingData | boxes = packingData.boxes |> List.map mapBoxFunc }
 
 
 suite : Test
@@ -15,21 +23,56 @@ suite =
         [ test "Pack random boxes and make sure they don't overlap" <|
             \_ ->
                 randomBoxes
-                    |> Pack.pack Pack.defaultConfig
+                    |> Pack.pack { minimumWidth = Quantity 50, powerOfTwoSize = False, spacing = Quantity.zero }
                     |> validPackingData
                     |> Expect.equal Nothing
+        , test "Pack random boxes with spacing and make sure they don't overlap and keep that minimum spacing" <|
+            \_ ->
+                let
+                    packingData =
+                        randomBoxes
+                            |> Pack.pack { minimumWidth = Quantity 50, powerOfTwoSize = False, spacing = Quantity 2 }
+
+                    expanded0 =
+                        mapBoxes
+                            (\{ x, y, width, height, data } ->
+                                { x = Quantity.plus x (Quantity -1)
+                                , y = Quantity.plus y (Quantity -1)
+                                , width = Quantity.plus width (Quantity 2)
+                                , height = Quantity.plus height (Quantity 2)
+                                , data = data
+                                }
+                            )
+                            packingData
+
+                    expanded1 =
+                        mapBoxes
+                            (\{ x, y, width, height, data } ->
+                                { x = Quantity.plus x (Quantity -2)
+                                , y = Quantity.plus y (Quantity -2)
+                                , width = Quantity.plus width (Quantity 4)
+                                , height = Quantity.plus height (Quantity 4)
+                                , data = data
+                                }
+                            )
+                            packingData
+                in
+                ( Overlapping.boxIntersections expanded0.boxes |> Set.isEmpty
+                , Overlapping.boxIntersections expanded1.boxes |> Set.isEmpty
+                )
+                    |> Expect.equal ( True, False )
         , test "Box with width exactly matching container width doesn't cause stack overflow" <|
             \_ ->
                 Pack.pack
                     Pack.defaultConfig
-                    [ { width = Quantity.Quantity 128, height = Quantity.zero, data = () } ]
+                    [ { width = Quantity 128, height = Quantity.zero, data = () } ]
                     |> Expect.equal
-                        { width = Quantity.Quantity 128
+                        { width = Quantity 128
                         , height = Quantity.zero
                         , boxes =
                             [ { x = Quantity.zero
                               , y = Quantity.zero
-                              , width = Quantity.Quantity 128
+                              , width = Quantity 128
                               , height = Quantity.zero
                               , data = ()
                               }
@@ -39,14 +82,14 @@ suite =
             \_ ->
                 Pack.pack
                     Pack.defaultConfig
-                    [ { width = Quantity.Quantity 129, height = Quantity.zero, data = () } ]
+                    [ { width = Quantity 129, height = Quantity.zero, data = () } ]
                     |> Expect.equal
-                        { width = Quantity.Quantity 256
+                        { width = Quantity 256
                         , height = Quantity.zero
                         , boxes =
                             [ { x = Quantity.zero
                               , y = Quantity.zero
-                              , width = Quantity.Quantity 129
+                              , width = Quantity 129
                               , height = Quantity.zero
                               , data = ()
                               }
@@ -61,36 +104,36 @@ overlapTests =
         [ test "Check 2 overlapping boxes" <|
             \_ ->
                 Overlapping.boxIntersections
-                    [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
-                    , { x = Quantity.Quantity 2, y = Quantity.Quantity 2, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                    [ { x = Quantity.zero, y = Quantity.zero, width = Quantity 5, height = Quantity 5 }
+                    , { x = Quantity 2, y = Quantity 2, width = Quantity 5, height = Quantity 5 }
                     ]
                     |> Expect.equal (Set.fromList [ ( 0, 1 ) ])
         , test "Check 2 non-overlapping boxes" <|
             \_ ->
-                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
-                , { x = Quantity.Quantity 5, y = Quantity.Quantity 2, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity 5, height = Quantity 5 }
+                , { x = Quantity 5, y = Quantity 2, width = Quantity 5, height = Quantity 5 }
                 ]
                     |> Overlapping.boxIntersections
                     |> Expect.equal Set.empty
         , test "Check 2 non-overlapping boxes reverse order" <|
             \_ ->
-                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
-                , { x = Quantity.Quantity 5, y = Quantity.Quantity 2, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity 5, height = Quantity 5 }
+                , { x = Quantity 5, y = Quantity 2, width = Quantity 5, height = Quantity 5 }
                 ]
                     |> List.reverse
                     |> Overlapping.boxIntersections
                     |> Expect.equal Set.empty
         , test "Check 2 non-overlapping vertical boxes" <|
             \_ ->
-                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
-                , { x = Quantity.zero, y = Quantity.Quantity 5, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity 5, height = Quantity 5 }
+                , { x = Quantity.zero, y = Quantity 5, width = Quantity 5, height = Quantity 5 }
                 ]
                     |> Overlapping.boxIntersections
                     |> Expect.equal Set.empty
         , test "Check 2 non-overlapping vertical boxes reverse order" <|
             \_ ->
-                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
-                , { x = Quantity.zero, y = Quantity.Quantity 5, width = Quantity.Quantity 5, height = Quantity.Quantity 5 }
+                [ { x = Quantity.zero, y = Quantity.zero, width = Quantity 5, height = Quantity 5 }
+                , { x = Quantity.zero, y = Quantity 5, width = Quantity 5, height = Quantity 5 }
                 ]
                     |> List.reverse
                     |> Overlapping.boxIntersections
@@ -137,35 +180,6 @@ validPackingData packingData =
 
                 [] ->
                     Nothing
-
-
-twoBoxesOverlap : Pack.PlacedBox number units a -> Pack.PlacedBox number units a -> Bool
-twoBoxesOverlap first second =
-    twoLinesOverlap first.x (Quantity.plus first.x first.width) second.x (Quantity.plus second.x second.width)
-        && twoLinesOverlap first.y (Quantity.plus first.y first.height) second.y (Quantity.plus second.y second.height)
-
-
-twoLinesOverlap :
-    Quantity.Quantity number units
-    -> Quantity.Quantity number units
-    -> Quantity.Quantity number units
-    -> Quantity.Quantity number units
-    -> Bool
-twoLinesOverlap a0 a1 b0 b1 =
-    let
-        aMin =
-            Quantity.min a0 a1
-
-        aMax =
-            Quantity.max a0 a1
-
-        bMin =
-            Quantity.min b0 b1
-
-        bMax =
-            Quantity.max b0 b1
-    in
-    (aMax |> Quantity.greaterThan bMin) && (bMax |> Quantity.greaterThan aMin)
 
 
 {-| A list of random box sizes. We dont use a fuzzer because they keep causing stack overflows.

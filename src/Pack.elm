@@ -151,8 +151,8 @@ mapPackingData mapFunc packedData =
 
 {-|
 
-  - `minimumWidth` sets how wide the container is provided there aren't any boxes that are too wide to fit.
-  - `powerOfTwoSize` decides if the width and height of the container should snap to a power of two size. Can be useful for creating texture atlases.
+  - `minimumWidth` sets how wide the container is. If any boxes are too wide to fit then the widest box will be used instead.
+  - `powerOfTwoSize` decides if the width and height of the container should snap to a power of two. Sometimes this is needed when creating texture atlases.
   - `spacing` controls how much separation there are between boxes. This does not affect spacing between boxes and the edge of the container.
 
 -}
@@ -326,7 +326,7 @@ packHelper spacing maxWidth y rows lastRow boxes =
         }
 
     else
-        packHelper spacing maxWidth newY newRows row rest
+        packHelper spacing maxWidth (Quantity.plus newY spacing) newRows row rest
 
 
 placeRow :
