@@ -5,6 +5,7 @@ import Fuzz exposing (Fuzzer, int, list, string)
 import Overlapping
 import Pack exposing (Box)
 import Quantity exposing (Quantity(..))
+import Random
 import Set
 import Test exposing (..)
 
@@ -17,20 +18,70 @@ mapBoxes mapBoxFunc packingData =
     { packingData | boxes = packingData.boxes |> List.map mapBoxFunc }
 
 
+testEfficiency boxes =
+    let
+        area =
+            boxes |> List.map (\{ width, height } -> Quantity.times width height) |> Quantity.sum
+
+        packingData =
+            Pack.pack { minimumWidth = Quantity 50, powerOfTwoSize = False, spacing = Quantity.zero } boxes
+    in
+    case validPackingData packingData of
+        Just _ ->
+            Nothing
+
+        Nothing ->
+            Just ( area, Quantity.times packingData.width packingData.height )
+
+
 suite : Test
 suite =
     describe "Packing tests"
         [ test "Pack random boxes and make sure they don't overlap" <|
             \_ ->
-                randomBoxes
+                randomBoxes0
                     |> Pack.pack { minimumWidth = Quantity 50, powerOfTwoSize = False, spacing = Quantity.zero }
                     |> validPackingData
                     |> Expect.equal Nothing
+        , test "Pack more random boxes and make sure they don't overlap" <|
+            \_ ->
+                let
+                    results =
+                        List.map testEfficiency randomBoxesN
+
+                    validResults =
+                        List.filterMap identity results
+
+                    totalArea =
+                        validResults |> List.map Tuple.second |> Quantity.sum |> Quantity.toFloatQuantity
+
+                    coveredArea =
+                        validResults |> List.map Tuple.first |> Quantity.sum |> Quantity.toFloatQuantity
+                in
+                if List.length results == List.length validResults then
+                    let
+                        efficiency =
+                            Quantity.ratio coveredArea totalArea
+
+                        minEfficiency =
+                            0.6
+                    in
+                    efficiency
+                        |> Expect.greaterThan minEfficiency
+                        |> Expect.onFail
+                            ("Insufficient packing efficiency: "
+                                ++ String.fromFloat efficiency
+                                ++ " < "
+                                ++ String.fromFloat minEfficiency
+                            )
+
+                else
+                    Expect.fail "Invalid packing results."
         , test "Pack random boxes with spacing and make sure they don't overlap and keep that minimum spacing" <|
             \_ ->
                 let
                     packingData =
-                        randomBoxes
+                        randomBoxes0
                             |> Pack.pack { minimumWidth = Quantity 50, powerOfTwoSize = False, spacing = Quantity 2 }
 
                     expanded0 =
@@ -184,7 +235,8 @@ validPackingData packingData =
 
 {-| A list of random box sizes. We dont use a fuzzer because they keep causing stack overflows.
 -}
-randomBoxes =
+randomBoxes0 : List { data : (), height : Quantity number units, width : Quantity number a }
+randomBoxes0 =
     [ { data = (), height = Quantity 27, width = Quantity -9 }
     , { data = (), height = Quantity 12, width = Quantity 30 }
     , { data = (), height = Quantity 21, width = Quantity 0 }
@@ -227,3 +279,16 @@ randomBoxes =
     , { data = (), height = Quantity 15, width = Quantity -12 }
     , { data = (), height = Quantity -27, width = Quantity -9 }
     ]
+
+
+randomBox =
+    Random.map2 (\w h -> { data = (), height = Quantity w, width = Quantity h }) (Random.int 1 20) (Random.int 1 20)
+
+
+randomBoxesN : List (List { data : (), height : Quantity Int units, width : Quantity Int a })
+randomBoxesN =
+    Random.int 5 100
+        |> Random.andThen (\length -> Random.list length randomBox)
+        |> Random.list 20
+        |> (\a -> Random.step a (Random.initialSeed 123123))
+        |> Tuple.first
