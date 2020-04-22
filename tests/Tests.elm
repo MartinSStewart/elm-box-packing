@@ -24,7 +24,7 @@ testEfficiency boxes =
             boxes |> List.map (\{ width, height } -> Quantity.times width height) |> Quantity.sum
 
         packingData =
-            Pack.pack { minimumWidth = Quantity 50, powerOfTwoSize = False, spacing = Quantity.zero } boxes
+            Pack.pack { spacing = Quantity.zero } boxes
     in
     case validPackingData packingData of
         Just _ ->
@@ -40,9 +40,16 @@ suite =
         [ test "Pack random boxes and make sure they don't overlap" <|
             \_ ->
                 randomBoxes0
-                    |> Pack.pack { minimumWidth = Quantity 50, powerOfTwoSize = False, spacing = Quantity.zero }
+                    |> Pack.pack { spacing = Quantity.zero }
                     |> validPackingData
                     |> Expect.equal Nothing
+        , test "Make sure this doesn't cause the program to hang" <|
+            \_ ->
+                [ { data = (), height = Quantity 200, width = Quantity 300 }
+                , { data = (), height = Quantity 15, width = Quantity 10 }
+                ]
+                    |> Pack.pack Pack.defaultConfig
+                    |> Expect.equal { width = Quantity.zero, height = Quantity.zero, boxes = [] }
         , test "Pack more random boxes and make sure they don't overlap" <|
             \_ ->
                 let
@@ -50,7 +57,9 @@ suite =
                         List.map testEfficiency randomBoxesN
 
                     validResults =
-                        List.filterMap identity results
+                        List.filterMap
+                            identity
+                            results
 
                     totalArea =
                         validResults |> List.map Tuple.second |> Quantity.sum |> Quantity.toFloatQuantity
@@ -82,7 +91,7 @@ suite =
                 let
                     packingData =
                         randomBoxes0
-                            |> Pack.pack { minimumWidth = Quantity 50, powerOfTwoSize = False, spacing = Quantity 2 }
+                            |> Pack.pack { spacing = Quantity 2 }
 
                     expanded0 =
                         mapBoxes
