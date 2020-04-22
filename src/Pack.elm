@@ -273,20 +273,30 @@ pack config list =
                             Quantity.compare (boxArea boxA) (boxArea boxB)
                 )
                 list
-
-        a =
-            List.foldl
-                (\box ( placedBoxes, regions ) ->
+    in
+    List.foldl
+        (\box ( { width, height, boxes } as packingData, regions ) ->
+            case regions of
+                head :: rest ->
                     let
                         ( placedBox, newRegions ) =
-                            placeBoxInRegion True box
+                            placeBoxInRegion True box head
                     in
-                    ( placedBox :: placedBoxes, regions ++ newRegions )
-                )
-                ( [], [ { x = Quantity.zero, y = Quantity.zero, width = Infinite, height = Infinite } ] )
-                sortedBoxes
-    in
-    { width = Quantity.zero, height = Quantity.zero, boxes = [] }
+                    ( { width = Quantity.max width (Quantity.plus placedBox.x placedBox.width)
+                      , height = Quantity.max height (Quantity.plus placedBox.y placedBox.height)
+                      , boxes = placedBox :: boxes
+                      }
+                    , rest ++ newRegions
+                    )
+
+                [] ->
+                    ( packingData, regions )
+        )
+        ( { width = Quantity.zero, height = Quantity.zero, boxes = [] }
+        , [ { x = Quantity.zero, y = Quantity.zero, width = Infinite, height = Infinite } ]
+        )
+        sortedBoxes
+        |> Tuple.first
 
 
 
@@ -387,29 +397,29 @@ placeBoxInRegion :
 placeBoxInRegion splitVertically box region =
     ( { x = region.x
       , y = region.y
-      , width = box.width
-      , height = box.height
+      , width = boxWidth box
+      , height = boxHeight box
       , data = box.data
       }
-    , [ { x = Quantity.plus region.x box.width
+    , [ { x = Quantity.plus region.x (boxWidth box)
         , y = region.y
-        , width = region.width |> lengthMinus box.width
+        , width = region.width |> lengthMinus (boxWidth box)
         , height =
             if splitVertically then
                 region.height
 
             else
-                Finite box.height
+                Finite (boxHeight box)
         }
       , { x = region.x
-        , y = Quantity.plus region.y box.height
+        , y = Quantity.plus region.y (boxHeight box)
         , width =
             if splitVertically then
-                Finite box.width
+                Finite (boxWidth box)
 
             else
                 region.width
-        , height = region.height |> lengthMinus box.height
+        , height = region.height |> lengthMinus (boxHeight box)
         }
       ]
         |> List.filter

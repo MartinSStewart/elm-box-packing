@@ -49,7 +49,9 @@ suite =
                 , { data = (), height = Quantity 15, width = Quantity 10 }
                 ]
                     |> Pack.pack Pack.defaultConfig
-                    |> Expect.equal { width = Quantity.zero, height = Quantity.zero, boxes = [] }
+                    |> .boxes
+                    |> List.length
+                    |> Expect.equal 2
         , test "Pack more random boxes and make sure they don't overlap" <|
             \_ ->
                 let
@@ -121,40 +123,6 @@ suite =
                 , Overlapping.boxIntersections expanded1.boxes |> Set.isEmpty
                 )
                     |> Expect.equal ( True, False )
-        , test "Box with width exactly matching container width doesn't cause stack overflow" <|
-            \_ ->
-                Pack.pack
-                    Pack.defaultConfig
-                    [ { width = Quantity 128, height = Quantity.zero, data = () } ]
-                    |> Expect.equal
-                        { width = Quantity 128
-                        , height = Quantity.zero
-                        , boxes =
-                            [ { x = Quantity.zero
-                              , y = Quantity.zero
-                              , width = Quantity 128
-                              , height = Quantity.zero
-                              , data = ()
-                              }
-                            ]
-                        }
-        , test "Box with width exceeding container width doesn't cause stack overflow" <|
-            \_ ->
-                Pack.pack
-                    Pack.defaultConfig
-                    [ { width = Quantity 129, height = Quantity.zero, data = () } ]
-                    |> Expect.equal
-                        { width = Quantity 256
-                        , height = Quantity.zero
-                        , boxes =
-                            [ { x = Quantity.zero
-                              , y = Quantity.zero
-                              , width = Quantity 129
-                              , height = Quantity.zero
-                              , data = ()
-                              }
-                            ]
-                        }
         ]
 
 
