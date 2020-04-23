@@ -276,7 +276,14 @@ pack config list =
     in
     List.foldl
         (\box ( { width, height, boxes } as packingData, regions ) ->
-            case regions of
+            case
+                List.filter
+                    (\region ->
+                        (region.width |> lengthGreaterThanOrEqualTo (boxWidth box))
+                            && (region.height |> lengthGreaterThanOrEqualTo (boxHeight box))
+                    )
+                    regions
+            of
                 head :: rest ->
                     let
                         ( placedBox, newRegions ) =
@@ -297,63 +304,6 @@ pack config list =
         )
         sortedBoxes
         |> Tuple.first
-
-
-
---type IRectangle =
---    abstract member X : double with get, set
---    abstract member Y : double with get, set
---    abstract member Width : double
---    abstract member Height : double
---    abstract member Id : int
---type internal Spot(x: double, y: double, width: double, height: double) =
---    member this.x = x
---    member this.y = y
---    member this.width = width
---    member this.height = height
---
---    member this.cut = fun (rect: IRectangle) ->
---        let intervalIntersect : double -> double -> double -> double -> bool =
---            fun start1 end1 start2 end2 -> min (end1 - start2) (end2 - start1) > 0.0;
---
---        let horizontalIntersect = intervalIntersect x (x + width) rect.X (rect.X + rect.Width)
---        let verticalIntersect   = intervalIntersect y (y + height) rect.Y (rect.Y + rect.Height)
---
---        if (horizontalIntersect && rect.Y >= y) then
---            Spot(x, y, width, min (rect.Y - y) height)
---        elif (verticalIntersect && rect.X >= x) then
---            Spot(x, y, min (rect.X - x) width, height)
---        else this
---module Packer =
---    let private initialSpots: Spot list = [Spot(0.0, 0.0, System.Double.MaxValue, System.Double.MaxValue)]
---
---    let private bestSpot (rect: IRectangle) (spots: Spot list) =
---        spots
---        |> Seq.filter (fun spot -> spot.width >= rect.Width && spot.height >= rect.Height)
---        |> Seq.sortBy (fun spot -> max (spot.x + rect.Width) (spot.y + rect.Height))
---        |> Seq.head
---
---    let private putRectangle (rect: IRectangle) (spots: Spot list): Spot list =
---        let best = bestSpot rect spots
---        rect.X <- best.x
---        rect.Y <- best.y
---        let right = Spot(best.x + rect.Width, best.y, best.width - rect.Width, best.height)
---        let top = Spot(best.x, best.y + rect.Height, best.width, best.height - rect.Height)
---        spots
---        |> Seq.filter (fun spot -> spot <> best)
---        |> Seq.map (fun spot -> spot.cut rect)
---        |> Seq.append [right; top]
---        |> List.ofSeq
---
---    let rec private putRectangles (rectangles: IRectangle list) (spots: Spot list) =
---        match rectangles, spots with
---        | [], _ -> ()
---        | rect::rest, _ -> putRectangles rest (putRectangle rect spots)
---
---    let packRectangles (rectangles: IRectangle list) =
---        let ordered = Seq.sortBy (fun (rect: IRectangle) -> -(rect.Width * rect.Height)) rectangles
---        putRectangles (List.ofSeq ordered) initialSpots
---        List.ofSeq ordered
 
 
 type Length number units
@@ -379,14 +329,24 @@ lengthMinus quantity length =
             value |> Quantity.minus quantity |> Finite
 
 
-lengthGreaterThan0 : Length number units -> Bool
-lengthGreaterThan0 length =
+lengthGreaterThan : Quantity number units -> Length number units -> Bool
+lengthGreaterThan quantity length =
     case length of
         Infinite ->
             True
 
         Finite value ->
-            value |> Quantity.greaterThan Quantity.zero
+            value |> Quantity.greaterThan quantity
+
+
+lengthGreaterThanOrEqualTo : Quantity number units -> Length number units -> Bool
+lengthGreaterThanOrEqualTo quantity length =
+    case length of
+        Infinite ->
+            True
+
+        Finite value ->
+            value |> Quantity.greaterThanOrEqualTo quantity
 
 
 placeBoxInRegion :
@@ -424,8 +384,8 @@ placeBoxInRegion splitVertically box region =
       ]
         |> List.filter
             (\region_ ->
-                lengthGreaterThan0 region_.width
-                    && lengthGreaterThan0 region_.height
+                lengthGreaterThan Quantity.zero region_.width
+                    && lengthGreaterThan Quantity.zero region_.height
             )
     )
 
