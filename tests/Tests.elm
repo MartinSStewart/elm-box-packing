@@ -34,6 +34,11 @@ testEfficiency boxes =
             Just ( area, Quantity.times packingData.width packingData.height )
 
 
+rawQuantity : Quantity number units -> number
+rawQuantity (Quantity.Quantity value) =
+    value
+
+
 suite : Test
 suite =
     describe "Packing tests"
@@ -43,6 +48,22 @@ suite =
                     |> Pack.pack { spacing = Quantity.zero }
                     |> validPackingData
                     |> Expect.equal Nothing
+        , test "Pack random boxes and make sure the containing region is reasonable" <|
+            \_ ->
+                let
+                    packingData =
+                        randomBoxes0
+                            |> Pack.pack { spacing = Quantity.zero }
+                in
+                if (packingData.width |> Quantity.lessThan (Quantity 400)) && (packingData.width |> Quantity.lessThan (Quantity 400)) then
+                    Expect.pass
+
+                else
+                    Expect.fail <|
+                        "Packing data width and height should be less than 400. width = "
+                            ++ String.fromInt (rawQuantity packingData.width)
+                            ++ ", height = "
+                            ++ String.fromInt (rawQuantity packingData.height)
         , test "Make sure this doesn't cause the program to hang" <|
             \_ ->
                 [ { data = (), height = Quantity 200, width = Quantity 300 }
