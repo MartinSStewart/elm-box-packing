@@ -276,28 +276,67 @@ pack config list =
                 |> List.reverse
     in
     List.foldl
-        (\box ( { width, height, boxes } as packingData, regions ) ->
+        (\box ( { width, height, boxes }, regions ) ->
+            let
+                updatePackingData placedBox =
+                    { width = Quantity.max width (Quantity.sum [ placedBox.x, placedBox.width, validatedConfig.spacing ])
+                    , height = Quantity.max height (Quantity.sum [ placedBox.y, placedBox.height, validatedConfig.spacing ])
+                    , boxes = placedBox :: boxes
+                    }
+            in
             case bestRegion validatedConfig.spacing box regions of
                 Just ( bestRegion_, regionsLeft ) ->
                     let
                         ( placedBox, newRegions ) =
                             placeBoxInRegion validatedConfig.spacing (List.length boxes |> modBy 2 |> (==) 0) box bestRegion_
                     in
-                    ( { width = Quantity.max width (Quantity.plus placedBox.x placedBox.width)
-                      , height = Quantity.max height (Quantity.plus placedBox.y placedBox.height)
-                      , boxes = placedBox :: boxes
-                      }
+                    ( updatePackingData placedBox
                     , newRegions ++ regionsLeft
                     )
 
                 Nothing ->
-                    ( packingData, regions )
+                    let
+                        fitsBottom =
+                            width |> Quantity.greaterThanOrEqualTo (Quantity.plus validatedConfig.spacing (boxWidth box))
+
+                        fitsRight =
+                            height |> Quantity.greaterThanOrEqualTo (Quantity.plus validatedConfig.spacing (boxHeight box))
+
+                        packBottom =
+                            if fitsBottom && fitsRight then
+                                height |> Quantity.lessThan width
+
+                            else
+                                fitsBottom
+
+                        newSpot =
+                            if packBottom then
+                                { x = Quantity.zero
+                                , y = height
+                                , width = width
+                                , height = Quantity.plus validatedConfig.spacing (boxHeight box)
+                                }
+
+                            else
+                                { x = width
+                                , y = Quantity.zero
+                                , width = Quantity.plus validatedConfig.spacing (boxWidth box)
+                                , height = height
+                                }
+
+                        ( placedBox, newRegions ) =
+                            placeBoxInRegion validatedConfig.spacing True box newSpot
+                    in
+                    ( updatePackingData placedBox
+                    , newRegions ++ regions
+                    )
         )
         ( { width = Quantity.zero, height = Quantity.zero, boxes = [] }
-        , [ { x = Quantity.zero, y = Quantity.zero, width = Infinite, height = Infinite } ]
+        , []
         )
         sortedBoxes
         |> Tuple.first
+        |> (\a -> { a | width = a.width |> Quantity.minus validatedConfig.spacing, height = a.height |> Quantity.minus validatedConfig.spacing })
 
 
 bestRegion :
@@ -311,23 +350,14 @@ bestRegion spacing box regions =
             regions
                 |> List.filter
                     (\region ->
-                        (region.width |> lengthGreaterThanOrEqualTo (Quantity.plus spacing (boxWidth box)))
-                            && (region.height |> lengthGreaterThanOrEqualTo (Quantity.plus spacing (boxHeight box)))
+                        (region.width |> Quantity.greaterThanOrEqualTo (Quantity.plus spacing (boxWidth box)))
+                            && (region.height |> Quantity.greaterThanOrEqualTo (Quantity.plus spacing (boxHeight box)))
                     )
                 |> Quantity.minimumBy
                     (\region ->
-                        case ( region.width |> lengthMinus box.width, region.height |> lengthMinus box.height ) of
-                            ( Infinite, Infinite ) ->
-                                Quantity 999999999999
-
-                            ( Infinite, Finite a ) ->
-                                Quantity.sum [ Quantity.multiplyBy 3 a, region.x, region.y ]
-
-                            ( Finite a, Infinite ) ->
-                                Quantity.sum [ Quantity.multiplyBy 3 a, region.x, region.y ]
-
-                            ( Finite a, Finite b ) ->
-                                Quantity.sum [ Quantity.min a b, region.x, region.y ]
+                        Quantity.min
+                            (region.width |> Quantity.minus box.width)
+                            (region.height |> Quantity.minus box.height)
                     )
     in
     case maybeBestRegion of
@@ -338,60 +368,12 @@ bestRegion spacing box regions =
             Nothing
 
 
-type Length number units
-    = Infinite
-    | Finite (Quantity number units)
-
-
-lengthMin : Length number units -> Length number units -> Length number units
-lengthMin length0 length1 =
-    case ( length0, length1 ) of
-        ( Infinite, l1 ) ->
-            l1
-
-        ( l0, Infinite ) ->
-            l0
-
-        ( Finite v0, Finite v1 ) ->
-            Quantity.min v0 v1 |> Finite
-
-
 type alias Region number units =
     { x : Quantity number units
     , y : Quantity number units
-    , width : Length number units
-    , height : Length number units
+    , width : Quantity number units
+    , height : Quantity number units
     }
-
-
-lengthMinus : Quantity number units -> Length number units -> Length number units
-lengthMinus quantity length =
-    case length of
-        Infinite ->
-            length
-
-        Finite value ->
-            value |> Quantity.minus quantity |> Finite
-
-
-lengthGreaterThan : Quantity number units -> Length number units -> Bool
-lengthGreaterThan quantity length =
-    case length of
-        Infinite ->
-            True
-
-        Finite value ->
-            value |> Quantity.greaterThan quantity
-
-
-lengthGreaterThanOrEqualTo : Quantity number units -> Length number units -> Bool
-lengthGreaterThanOrEqualTo quantity length =
-    case length of
-        Infinite ->
-            True
-
-        Finite value ->
-            value |> Quantity.greaterThanOrEqualTo quantity
 
 
 placeBoxInRegion :
@@ -416,29 +398,29 @@ placeBoxInRegion spacing splitVertically box region =
       }
     , [ { x = Quantity.plus region.x boxWidth_
         , y = region.y
-        , width = region.width |> lengthMinus boxWidth_
+        , width = region.width |> Quantity.minus boxWidth_
         , height =
             if splitVertically then
                 region.height
 
             else
-                Finite boxHeight_
+                boxHeight_
         }
       , { x = region.x
         , y = Quantity.plus region.y boxHeight_
         , width =
             if splitVertically then
-                Finite boxWidth_
+                boxWidth_
 
             else
                 region.width
-        , height = region.height |> lengthMinus boxHeight_
+        , height = region.height |> Quantity.minus boxHeight_
         }
       ]
         |> List.filter
             (\region_ ->
-                lengthGreaterThan Quantity.zero region_.width
-                    && lengthGreaterThan Quantity.zero region_.height
+                Quantity.greaterThan Quantity.zero region_.width
+                    && Quantity.greaterThan Quantity.zero region_.height
             )
     )
 

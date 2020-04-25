@@ -97,7 +97,7 @@ suite =
                             Quantity.ratio coveredArea totalArea
 
                         minEfficiency =
-                            0.6
+                            1
                     in
                     efficiency
                         |> Expect.greaterThan minEfficiency
@@ -147,7 +147,8 @@ suite =
                     |> Expect.equal ( True, False )
         , test "Texture atlas pack" <|
             \_ ->
-                randomBoxes0
+                Random.step (Random.list 400 randomBox) (Random.initialSeed 123123)
+                    |> Tuple.first
                     |> List.map
                         (\box ->
                             List.repeat
@@ -160,7 +161,7 @@ suite =
                                 |> Image.fromList (abs <| rawQuantity box.width)
                                 |> (\a -> { image = a, data = () })
                         )
-                    |> Pack.textureAtlas { spacing = Quantity.zero }
+                    |> Pack.textureAtlas { spacing = Quantity 1 }
                     |> .atlas
                     |> Image.toPngUrl
                     |> Debug.log ""
@@ -306,7 +307,7 @@ randomBox =
 
 randomBoxesN : List (List { data : (), height : Quantity Int units, width : Quantity Int a })
 randomBoxesN =
-    Random.int 5 100
+    Random.int 5 400
         |> Random.andThen (\length -> Random.list length randomBox)
         |> Random.list 20
         |> (\a -> Random.step a (Random.initialSeed 123123))
