@@ -1,7 +1,8 @@
 module Tests exposing (overlapTests, suite)
 
+import Bitwise
 import Expect exposing (Expectation)
-import Fuzz exposing (Fuzzer, int, list, string)
+import Image
 import Overlapping
 import Pack exposing (Box)
 import Quantity exposing (Quantity(..))
@@ -144,6 +145,26 @@ suite =
                 , Overlapping.boxIntersections expanded1.boxes |> Set.isEmpty
                 )
                     |> Expect.equal ( True, False )
+        , test "Texture atlas pack" <|
+            \_ ->
+                randomBoxes0
+                    |> List.map
+                        (\box ->
+                            List.repeat
+                                (abs <| rawQuantity box.width * rawQuantity box.height)
+                                (Random.step
+                                    (Random.int 0 0x00FFFFFF |> Random.map (\a -> Bitwise.or a 255))
+                                    (Random.initialSeed (rawQuantity box.width + rawQuantity box.height))
+                                    |> Tuple.first
+                                )
+                                |> Image.fromList (abs <| rawQuantity box.width)
+                                |> (\a -> { image = a, data = () })
+                        )
+                    |> Pack.textureAtlas { spacing = Quantity.zero }
+                    |> .atlas
+                    |> Image.toPngUrl
+                    |> Debug.log ""
+                    |> always Expect.pass
         ]
 
 

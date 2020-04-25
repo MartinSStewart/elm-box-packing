@@ -273,36 +273,24 @@ pack config list =
                             Quantity.compare (boxArea boxA) (boxArea boxB)
                 )
                 list
+                |> List.reverse
     in
     List.foldl
         (\box ( { width, height, boxes } as packingData, regions ) ->
-            case
-                List.filter
-                    (\region ->
-                        (region.width
-                            |> lengthGreaterThanOrEqualTo
-                                (Quantity.plus validatedConfig.spacing (boxWidth box))
-                        )
-                            && (region.height
-                                    |> lengthGreaterThanOrEqualTo
-                                        (Quantity.plus validatedConfig.spacing (boxHeight box))
-                               )
-                    )
-                    regions
-            of
-                head :: rest ->
+            case bestRegion validatedConfig.spacing box regions of
+                Just ( bestRegion_, regionsLeft ) ->
                     let
                         ( placedBox, newRegions ) =
-                            placeBoxInRegion validatedConfig.spacing True box head
+                            placeBoxInRegion validatedConfig.spacing (List.length boxes |> modBy 2 |> (==) 0) box bestRegion_
                     in
                     ( { width = Quantity.max width (Quantity.plus placedBox.x placedBox.width)
                       , height = Quantity.max height (Quantity.plus placedBox.y placedBox.height)
                       , boxes = placedBox :: boxes
                       }
-                    , rest ++ newRegions
+                    , newRegions ++ regionsLeft
                     )
 
-                [] ->
+                Nothing ->
                     ( packingData, regions )
         )
         ( { width = Quantity.zero, height = Quantity.zero, boxes = [] }
@@ -312,9 +300,60 @@ pack config list =
         |> Tuple.first
 
 
+bestRegion :
+    Quantity number units
+    -> Box number units data
+    -> List (Region number units)
+    -> Maybe ( Region number units, List (Region number units) )
+bestRegion spacing box regions =
+    let
+        maybeBestRegion =
+            regions
+                |> List.filter
+                    (\region ->
+                        (region.width |> lengthGreaterThanOrEqualTo (Quantity.plus spacing (boxWidth box)))
+                            && (region.height |> lengthGreaterThanOrEqualTo (Quantity.plus spacing (boxHeight box)))
+                    )
+                |> Quantity.minimumBy
+                    (\region ->
+                        case ( region.width |> lengthMinus box.width, region.height |> lengthMinus box.height ) of
+                            ( Infinite, Infinite ) ->
+                                Quantity 999999999999
+
+                            ( Infinite, Finite a ) ->
+                                Quantity.sum [ Quantity.multiplyBy 3 a, region.x, region.y ]
+
+                            ( Finite a, Infinite ) ->
+                                Quantity.sum [ Quantity.multiplyBy 3 a, region.x, region.y ]
+
+                            ( Finite a, Finite b ) ->
+                                Quantity.sum [ Quantity.min a b, region.x, region.y ]
+                    )
+    in
+    case maybeBestRegion of
+        Just bestRegion_ ->
+            Just ( bestRegion_, List.filter ((/=) bestRegion_) regions )
+
+        Nothing ->
+            Nothing
+
+
 type Length number units
     = Infinite
     | Finite (Quantity number units)
+
+
+lengthMin : Length number units -> Length number units -> Length number units
+lengthMin length0 length1 =
+    case ( length0, length1 ) of
+        ( Infinite, l1 ) ->
+            l1
+
+        ( l0, Infinite ) ->
+            l0
+
+        ( Finite v0, Finite v1 ) ->
+            Quantity.min v0 v1 |> Finite
 
 
 type alias Region number units =
