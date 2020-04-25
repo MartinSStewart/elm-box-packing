@@ -1,26 +1,38 @@
 module Pack exposing
-    ( pack, defaultConfig, Box, Config, PackingData, PlacedBox
+    ( pack, defaultConfig, Box, Config, PackedBoxes, PackedBox
     , textureAtlas, ImageBox, TextureAtlas
-    , textureAtlasCodec, packingDataCodec
-    , packingDataCodecFloat
+    , textureAtlasCodec, packedBoxesCodec, packedBoxesCodecFloat
     )
 
 {-|
 
 
+### Efficiently pack 2D boxes together.
+
+Note that this package uses [`Quantity`](https://package.elm-lang.org/packages/ianmackenzie/elm-units/latest/Quantity) instead of raw `Int`s and `Float`s.
+You'll need to install [`ianmackenzie/elm-units`](https://package.elm-lang.org/packages/ianmackenzie/elm-units/latest/) to get started.
+
+
 # Generic packing
 
-@docs pack, defaultConfig, Box, Config, PackingData, PlacedBox
+Functions for packing boxes together. Scroll down to the Image Packing section if you want to work specifically with images.
+
+@docs pack, defaultConfig, Box, Config, PackedBoxes, PackedBox
 
 
 # Image packing
+
+Suppose you have a lot of images and you want to load them in as a single image to reduce HTTP requests or simplify texture management in WebGL?
+With these functions you can generate a texture atlas (also called a sprite sheet) to pack all the images together.
 
 @docs textureAtlas, ImageBox, TextureAtlas
 
 
 # Serialization
 
-@docs textureAtlasCodec, packingDataCodec
+If you want to save your packed boxes/images and then later load them into an app, these functions (when used with [`MartinSStewart/elm-codec-bytes`](https://package.elm-lang.org/packages/MartinSStewart/elm-codec-bytes/latest/)) should help.
+
+@docs textureAtlasCodec, packedBoxesCodec, packedBoxesCodecFloat
 
 -}
 
@@ -32,18 +44,19 @@ import Pixels exposing (Pixels)
 import Quantity exposing (Quantity(..))
 
 
-{-| -}
-type alias PackingData number units a =
+{-| All of the boxes we've packed together and how large the containing region is.
+-}
+type alias PackedBoxes number units a =
     { width : Quantity number units
     , height : Quantity number units
-    , boxes : List (PlacedBox number units a)
+    , boxes : List (PackedBox number units a)
     }
 
 
-{-| Our box, now placed within a larger rectangle.
-The width and height of these placed boxes will be positive even if the corresponding `Box` had a negative width or height.
+{-| A box, now packed into a larger rectangle.
+The width and height of these boxes will be positive even if the corresponding `Box` had a negative width or height.
 -}
-type alias PlacedBox number units a =
+type alias PackedBox number units a =
     { x : Quantity number units
     , y : Quantity number units
     , width : Quantity number units
@@ -52,7 +65,8 @@ type alias PlacedBox number units a =
     }
 
 
-{-| -}
+{-| A box we want to pack and its accompanying data. Use this with [`pack`](#pack).
+-}
 type alias Box number units a =
     { width : Quantity number units
     , height : Quantity number units
@@ -60,23 +74,29 @@ type alias Box number units a =
     }
 
 
-{-| -}
+{-| An image we want to pack and its accompanying data. Use this with [`textureAtlas`](#textureAtlas).
+-}
 type alias ImageBox a =
     { image : Image
     , data : a
     }
 
 
-{-| -}
+{-| A texture atlas image and accompanying data.
+Note that [`Image`](https://package.elm-lang.org/packages/justgook/elm-image/latest/Image#Image) may contain functions.
+[Don't store this data structure in you model](https://discourse.elm-lang.org/t/implications-of-storing-functions-in-model-or-msg-type/5472?u=martins).
+Instead convert `Image` into some other format such as [`Image.toPngUrl`](https://package.elm-lang.org/packages/justgook/elm-image/latest/Image#toPngUrl).
+-}
 type alias TextureAtlas a =
-    { packingData : PackingData Int Pixels a, atlas : Image }
+    { packedBoxes : PackedBoxes Int Pixels a, atlas : Image }
 
 
-{-| -}
+{-| A codec for [`TextureAtlas`](#TextureAtlas).
+-}
 textureAtlasCodec : Codec a -> Codec (TextureAtlas a)
 textureAtlasCodec dataCodec =
     Codec.object TextureAtlas
-        |> Codec.field .packingData (packingDataCodec dataCodec)
+        |> Codec.field .packedBoxes (packedBoxesCodec dataCodec)
         |> Codec.field .atlas imageCodec
         |> Codec.buildObject
 
@@ -96,29 +116,31 @@ quantityCodecFloat =
     Codec.float64 |> Codec.map Quantity.Quantity rawQuantity
 
 
-{-| -}
-packingDataCodec : Codec a -> Codec (PackingData Int units a)
-packingDataCodec dataCodec =
-    Codec.object PackingData
+{-| A codec for [`PackedBoxes`](#PackedBoxes) when dealing with integer values.
+-}
+packedBoxesCodec : Codec a -> Codec (PackedBoxes Int units a)
+packedBoxesCodec dataCodec =
+    Codec.object PackedBoxes
         |> Codec.field .width quantityCodec
         |> Codec.field .height quantityCodec
         |> Codec.field .boxes (Codec.list (placeBoxCodec dataCodec))
         |> Codec.buildObject
 
 
-{-| -}
-packingDataCodecFloat : Codec a -> Codec (PackingData Float units a)
-packingDataCodecFloat dataCodec =
-    Codec.object PackingData
+{-| A codec for [`PackedBoxes`](#PackedBoxes) when dealing with floating point values.
+-}
+packedBoxesCodecFloat : Codec a -> Codec (PackedBoxes Float units a)
+packedBoxesCodecFloat dataCodec =
+    Codec.object PackedBoxes
         |> Codec.field .width quantityCodecFloat
         |> Codec.field .height quantityCodecFloat
         |> Codec.field .boxes (Codec.list (placeBoxCodecFloat dataCodec))
         |> Codec.buildObject
 
 
-placeBoxCodec : Codec a -> Codec (PlacedBox Int units a)
+placeBoxCodec : Codec a -> Codec (PackedBox Int units a)
 placeBoxCodec dataCodec =
-    Codec.object PlacedBox
+    Codec.object PackedBox
         |> Codec.field .x quantityCodec
         |> Codec.field .y quantityCodec
         |> Codec.field .width quantityCodec
@@ -127,9 +149,9 @@ placeBoxCodec dataCodec =
         |> Codec.buildObject
 
 
-placeBoxCodecFloat : Codec a -> Codec (PlacedBox Float units a)
+placeBoxCodecFloat : Codec a -> Codec (PackedBox Float units a)
 placeBoxCodecFloat dataCodec =
-    Codec.object PlacedBox
+    Codec.object PackedBox
         |> Codec.field .x quantityCodecFloat
         |> Codec.field .y quantityCodecFloat
         |> Codec.field .width quantityCodecFloat
@@ -138,8 +160,8 @@ placeBoxCodecFloat dataCodec =
         |> Codec.buildObject
 
 
-mapPackingData : (a -> b) -> PackingData number units a -> PackingData number units b
-mapPackingData mapFunc packedData =
+mapPackedBoxes : (a -> b) -> PackedBoxes number units a -> PackedBoxes number units b
+mapPackedBoxes mapFunc packedData =
     { width = packedData.width
     , height = packedData.height
     , boxes =
@@ -151,19 +173,22 @@ mapPackingData mapFunc packedData =
 
 {-|
 
-  - `minimumWidth` sets how wide the container is. If any boxes are too wide to fit then the widest box will be used instead.
-  - `powerOfTwoSize` decides if the width and height of the container should snap to a power of two. Sometimes this is needed when creating texture atlases.
-  - `spacing` controls how much separation there are between boxes. This does not affect spacing between boxes and the edge of the container.
+  - `powerOfTwoSize` sets if the width and height of the container should grow to a power of two size.
+    Sometimes this is needed when creating texture atlases.
+  - `spacing` sets the minimum separation between boxes.
 
 -}
 type alias Config number units =
     { spacing : Quantity number units
+    , powerOfTwoSize : Bool
     }
 
 
+{-| Default configuration for packing boxes. Zero spacing and no growing the container width and height to a power of two.
+-}
 defaultConfig : Config number units
 defaultConfig =
-    { spacing = Quantity.zero }
+    { spacing = Quantity.zero, powerOfTwoSize = False }
 
 
 boxWidth : { a | width : Quantity number units } -> Quantity number units
@@ -182,11 +207,16 @@ boxArea box =
 
 
 {-| Pack images together to create a single texture atlas image.
+
+Note that this is a slow process.
+Even for a small texture atlas (256x256 pixels) it can take a couple seconds and for large images it's probably not a good idea to try.
+If you need something fast then it's probably a better idea to just use [`pack`](#pack) and then draw the texture atlas using an HTML5 canvas or something.
+
 -}
 textureAtlas : Config Int Pixels -> List (ImageBox a) -> TextureAtlas a
 textureAtlas config images =
     let
-        packedData : PackingData Int Pixels ( Image, a )
+        packedData : PackedBoxes Int Pixels ( Image, a )
         packedData =
             images
                 |> List.map
@@ -204,7 +234,7 @@ textureAtlas config images =
                 (\box -> { x = box.x, y = box.y, image = Image.toArray2d (Tuple.first box.data) })
                 packedData.boxes
     in
-    { packingData = mapPackingData Tuple.second packedData
+    { packedBoxes = mapPackedBoxes Tuple.second packedData
     , atlas =
         List.foldl
             (\imageBox atlas ->
@@ -248,7 +278,7 @@ rawQuantity (Quantity.Quantity value) =
 
 {-| Pack generic boxes together.
 -}
-pack : Config number units -> List (Box number units a) -> PackingData number units a
+pack : Config number units -> List (Box number units a) -> PackedBoxes number units a
 pack config list =
     let
         validatedConfig =
@@ -274,11 +304,17 @@ pack config list =
                 )
                 list
                 |> List.reverse
+
+        minBoxWidth =
+            sortedBoxes |> List.map .width |> Quantity.minimum |> Maybe.withDefault Quantity.zero |> Quantity.plus validatedConfig.spacing
+
+        minBoxHeight =
+            sortedBoxes |> List.map .height |> Quantity.minimum |> Maybe.withDefault Quantity.zero |> Quantity.plus validatedConfig.spacing
     in
     List.foldl
         (\box ( { width, height, boxes }, regions ) ->
             let
-                updatePackingData placedBox =
+                updatePackedBoxes placedBox =
                     { width = Quantity.max width (Quantity.sum [ placedBox.x, placedBox.width, validatedConfig.spacing ])
                     , height = Quantity.max height (Quantity.sum [ placedBox.y, placedBox.height, validatedConfig.spacing ])
                     , boxes = placedBox :: boxes
@@ -288,9 +324,9 @@ pack config list =
                 Just ( bestRegion_, regionsLeft ) ->
                     let
                         ( placedBox, newRegions ) =
-                            placeBoxInRegion validatedConfig.spacing (List.length boxes |> modBy 2 |> (==) 0) box bestRegion_
+                            placeBoxInRegion minBoxWidth minBoxHeight validatedConfig.spacing (List.length boxes |> modBy 2 |> (==) 0) box bestRegion_
                     in
-                    ( updatePackingData placedBox
+                    ( updatePackedBoxes placedBox
                     , newRegions ++ regionsLeft
                     )
 
@@ -325,9 +361,9 @@ pack config list =
                                 }
 
                         ( placedBox, newRegions ) =
-                            placeBoxInRegion validatedConfig.spacing True box newSpot
+                            placeBoxInRegion minBoxWidth minBoxHeight validatedConfig.spacing True box newSpot
                     in
-                    ( updatePackingData placedBox
+                    ( updatePackedBoxes placedBox
                     , newRegions ++ regions
                     )
         )
@@ -336,7 +372,23 @@ pack config list =
         )
         sortedBoxes
         |> Tuple.first
-        |> (\a -> { a | width = a.width |> Quantity.minus validatedConfig.spacing, height = a.height |> Quantity.minus validatedConfig.spacing })
+        |> (\a ->
+                let
+                    getFinalDimension dimension =
+                        dimension
+                            |> Quantity.minus validatedConfig.spacing
+                            |> (if config.powerOfTwoSize then
+                                    nextPowerOf2
+
+                                else
+                                    identity
+                               )
+                in
+                { a
+                    | width = getFinalDimension a.width
+                    , height = getFinalDimension a.height
+                }
+           )
 
 
 bestRegion :
@@ -378,11 +430,13 @@ type alias Region number units =
 
 placeBoxInRegion :
     Quantity number units
+    -> Quantity number units
+    -> Quantity number units
     -> Bool
     -> Box number units data
     -> Region number units
-    -> ( PlacedBox number units data, List (Region number units) )
-placeBoxInRegion spacing splitVertically box region =
+    -> ( PackedBox number units data, List (Region number units) )
+placeBoxInRegion minBoxWidth minBoxHeight spacing splitVertically box region =
     let
         boxWidth_ =
             Quantity.plus spacing (boxWidth box)
@@ -419,128 +473,24 @@ placeBoxInRegion spacing splitVertically box region =
       ]
         |> List.filter
             (\region_ ->
-                Quantity.greaterThan Quantity.zero region_.width
-                    && Quantity.greaterThan Quantity.zero region_.height
+                Quantity.greaterThanOrEqualTo minBoxWidth region_.width
+                    && Quantity.greaterThanOrEqualTo minBoxHeight region_.height
             )
     )
 
 
-
---type alias Spot number units =
---    { x : Quantity number units
---    , y : Quantity number units
---    , width : Quantity number units
---    , height : Quantity number units
---    }
---
---
---bestSpot : Box number units data -> List (Spot number units) -> Maybe (Spot number units)
---bestSpot rect spots =
---    spots
---        |> List.filter (\spot -> (spot.width |> Quantity.greaterThanOrEqualTo rect.width) && (spot.height |> Quantity.greaterThanOrEqualTo rect.height))
---        |> Quantity.sortBy (\spot -> Quantity.max (Quantity.plus spot.x rect.width) (Quantity.plus spot.y rect.height))
---        |> List.head
---
---
---spotCut : PlacedBox number units data -> Spot number units -> Spot number units
---spotCut placedBox spot =
---    let
---        intervalIntersect start1 end1 start2 end2 =
---            Quantity.min (end1 |> Quantity.minus start2) (end2 |> Quantity.minus start1)
---                |> Quantity.greaterThan Quantity.zero
---
---        horizontalIntersect =
---            intervalIntersect
---                spot.x
---                (Quantity.plus spot.x spot.width)
---                placedBox.x
---                (Quantity.plus placedBox.x placedBox.width)
---
---        verticalIntersect =
---            intervalIntersect
---                spot.y
---                (Quantity.plus spot.y spot.height)
---                placedBox.y
---                (Quantity.plus placedBox.y placedBox.height)
---    in
---    if horizontalIntersect && (placedBox.y |> Quantity.greaterThanOrEqualTo spot.y) then
---        { x = spot.x
---        , y = spot.y
---        , width = spot.width
---        , height = Quantity.min (placedBox.y |> Quantity.minus spot.y) spot.height
---        }
---
---    else if verticalIntersect && (placedBox.x |> Quantity.greaterThanOrEqualTo spot.x) then
---        { x = spot.x
---        , y = spot.y
---        , width = Quantity.min (placedBox.x |> Quantity.minus spot.x) spot.width
---        , height = spot.height
---        }
---
---    else
---        spot
---
---
---initialSpots : List (Spot number units)
---initialSpots =
---    [ { x = Quantity 0, y = Quantity 0, width = Quantity 9999999, height = Quantity 9999999 } ]
---
---
---putRectangles : List (Box number units data) -> List (Spot number units) -> List (PlacedBox number units data)
---putRectangles boxes spots =
---    case boxes of
---        [] ->
---            []
---
---        head :: rest ->
---            putRectangles rest (putRectangle head spots)
---
---
---putRectangle : Box number units data -> List (Spot number units) -> List (Spot number units)
---putRectangle rect spots =
---    case bestSpot rect spots of
---        Just best ->
---            let
---                placedRect =
---                    { x = best.x, y = best.y, width = rect.width, height = rect.height, data = rect.data }
---
---                right =
---                    { x = Quantity.plus best.x rect.width
---                    , y = best.y
---                    , width = best.width |> Quantity.minus rect.width
---                    , height = best.height
---                    }
---
---                top =
---                    { x = best.x
---                    , y = Quantity.plus best.y rect.height
---                    , width = best.width
---                    , height = best.height |> Quantity.minus rect.height
---                    }
---            in
---            spots
---                |> List.map
---                    (\spot ->
---                        if spot == best then
---                            spotCut placedRect spot
---
---                        else
---                            spot
---                    )
---                |> (++) [ right, top ]
---
---        Nothing ->
---            spots
-
-
 nextPowerOf2 : Quantity number units -> Quantity number units
 nextPowerOf2 (Quantity.Quantity value) =
-    let
-        helperPlus n =
-            if 2 ^ n < value then
-                helperPlus (n + 1)
+    if value == 0 then
+        Quantity.zero
 
-            else
-                2 ^ n
-    in
-    helperPlus 0 |> Quantity.Quantity
+    else
+        let
+            helperPlus n =
+                if 2 ^ n < value then
+                    helperPlus (n + 1)
+
+                else
+                    2 ^ n
+        in
+        helperPlus 0 |> Quantity.Quantity

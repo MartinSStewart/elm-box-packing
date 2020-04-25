@@ -1,8 +1,6 @@
 module Tests exposing (overlapTests, suite)
 
-import Bitwise
 import Expect exposing (Expectation)
-import Image
 import Overlapping
 import Pack exposing (Box)
 import Quantity exposing (Quantity(..))
@@ -12,9 +10,9 @@ import Test exposing (..)
 
 
 mapBoxes :
-    (Pack.PlacedBox number units a -> Pack.PlacedBox number units a)
-    -> Pack.PackingData number units a
-    -> Pack.PackingData number units a
+    (Pack.PackedBox number units a -> Pack.PackedBox number units a)
+    -> Pack.PackedBoxes number units a
+    -> Pack.PackedBoxes number units a
 mapBoxes mapBoxFunc packingData =
     { packingData | boxes = packingData.boxes |> List.map mapBoxFunc }
 
@@ -25,7 +23,7 @@ testEfficiency boxes =
             boxes |> List.map (\{ width, height } -> Quantity.times width height) |> Quantity.sum
 
         packingData =
-            Pack.pack { spacing = Quantity.zero } boxes
+            Pack.pack { spacing = Quantity.zero, powerOfTwoSize = False } boxes
     in
     case validPackingData packingData of
         Just _ ->
@@ -43,10 +41,14 @@ rawQuantity (Quantity.Quantity value) =
 suite : Test
 suite =
     describe "Packing tests"
-        [ test "Pack random boxes and make sure they don't overlap" <|
+        [ test "Pack no boxes" <|
+            \_ ->
+                Pack.pack { spacing = Quantity.zero, powerOfTwoSize = False } []
+                    |> Expect.equal { width = Quantity.zero, height = Quantity.zero, boxes = [] }
+        , test "Pack random boxes and make sure they don't overlap" <|
             \_ ->
                 randomBoxes0
-                    |> Pack.pack { spacing = Quantity.zero }
+                    |> Pack.pack { spacing = Quantity.zero, powerOfTwoSize = False }
                     |> validPackingData
                     |> Expect.equal Nothing
         , test "Pack random boxes and make sure the containing region is reasonable" <|
@@ -54,7 +56,7 @@ suite =
                 let
                     packingData =
                         randomBoxes0
-                            |> Pack.pack { spacing = Quantity.zero }
+                            |> Pack.pack { spacing = Quantity.zero, powerOfTwoSize = False }
                 in
                 if (packingData.width |> Quantity.lessThan (Quantity 400)) && (packingData.width |> Quantity.lessThan (Quantity 400)) then
                     Expect.pass
@@ -97,7 +99,7 @@ suite =
                             Quantity.ratio coveredArea totalArea
 
                         minEfficiency =
-                            1
+                            0.8
                     in
                     efficiency
                         |> Expect.greaterThan minEfficiency
@@ -115,7 +117,7 @@ suite =
                 let
                     packingData =
                         randomBoxes0
-                            |> Pack.pack { spacing = Quantity 2 }
+                            |> Pack.pack { spacing = Quantity 2, powerOfTwoSize = False }
 
                     expanded0 =
                         mapBoxes
@@ -145,27 +147,28 @@ suite =
                 , Overlapping.boxIntersections expanded1.boxes |> Set.isEmpty
                 )
                     |> Expect.equal ( True, False )
-        , test "Texture atlas pack" <|
-            \_ ->
-                Random.step (Random.list 400 randomBox) (Random.initialSeed 123123)
-                    |> Tuple.first
-                    |> List.map
-                        (\box ->
-                            List.repeat
-                                (abs <| rawQuantity box.width * rawQuantity box.height)
-                                (Random.step
-                                    (Random.int 0 0x00FFFFFF |> Random.map (\a -> Bitwise.or a 255))
-                                    (Random.initialSeed (rawQuantity box.width + rawQuantity box.height))
-                                    |> Tuple.first
-                                )
-                                |> Image.fromList (abs <| rawQuantity box.width)
-                                |> (\a -> { image = a, data = () })
-                        )
-                    |> Pack.textureAtlas { spacing = Quantity 1 }
-                    |> .atlas
-                    |> Image.toPngUrl
-                    |> Debug.log ""
-                    |> always Expect.pass
+
+        --, test "Texture atlas pack" <|
+        --    \_ ->
+        --        Random.step (Random.list 400 randomBox) (Random.initialSeed 123123)
+        --            |> Tuple.first
+        --            |> List.map
+        --                (\box ->
+        --                    List.repeat
+        --                        (abs <| rawQuantity box.width * rawQuantity box.height)
+        --                        (Random.step
+        --                            (Random.int 0 0x00FFFFFF |> Random.map (\a -> Bitwise.or a 255))
+        --                            (Random.initialSeed (rawQuantity box.width + rawQuantity box.height))
+        --                            |> Tuple.first
+        --                        )
+        --                        |> Image.fromList (abs <| rawQuantity box.width)
+        --                        |> (\a -> { image = a, data = () })
+        --                )
+        --            |> Pack.textureAtlas { spacing = Quantity 1, powerOfTwoSize = True }
+        --            |> .atlas
+        --            |> Image.toPngUrl
+        --            |> Debug.log ""
+        --            |> always Expect.pass
         ]
 
 
@@ -209,25 +212,15 @@ overlapTests =
                     |> List.reverse
                     |> Overlapping.boxIntersections
                     |> Expect.equal Set.empty
-        , test "a" <|
-            \_ ->
-                [ { data = (), height = Quantity 27, width = Quantity 9, x = Quantity 78, y = Quantity 150 }
-                , { data = (), height = Quantity 15, width = Quantity 12, x = Quantity 66, y = Quantity 150 }
-                , { data = (), height = Quantity 6, width = Quantity 15, x = Quantity 87, y = Quantity 120 }
-                , { data = (), height = Quantity 0, width = Quantity 15, x = Quantity 72, y = Quantity 120 }
-                , { data = (), height = Quantity 9, width = Quantity 15, x = Quantity 57, y = Quantity 120 }
-                ]
-                    |> Overlapping.boxIntersections
-                    |> Expect.equal Set.empty
         ]
 
 
 type Error number units a
-    = BoxOutside (Pack.PlacedBox number units a) (List (Pack.PlacedBox number units a))
+    = BoxOutside (Pack.PackedBox number units a) (List (Pack.PackedBox number units a))
     | BoxOverlap ( Int, Int ) (List ( Int, Int ))
 
 
-validPackingData : Pack.PackingData number units a -> Maybe (Error number units a)
+validPackingData : Pack.PackedBoxes number units a -> Maybe (Error number units a)
 validPackingData packingData =
     let
         boxesOutside =
