@@ -1,4 +1,4 @@
-# elm-box-packer
+# elm-box-packing
 
 ### Efficiently pack 2D boxes together.
 This is useful for creating texture atlases, sprite sheets, or just making some neat generative artwork.
