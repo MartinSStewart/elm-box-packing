@@ -3,13 +3,13 @@
     "name": "MartinSStewart/elm-box-packing",
     "summary": "Pack rectangles closely together. Useful for texture atlases and sprite sheets.",
     "license": "BSD-3-Clause",
-    "version": "1.0.1",
+    "version": "2.0.0",
     "exposed-modules": [
         "Pack"
     ],
     "elm-version": "0.19.0 <= v < 0.20.0",
     "dependencies": {
-        "MartinSStewart/elm-codec-bytes": "1.1.0 <= v < 2.0.0",
+        "MartinSStewart/elm-serialize": "1.0.1 <= v < 2.0.0",
         "elm/bytes": "1.0.8 <= v < 2.0.0",
         "elm/core": "1.0.0 <= v < 2.0.0",
         "ianmackenzie/elm-units": "2.4.0 <= v < 3.0.0",

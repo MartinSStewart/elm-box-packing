@@ -37,11 +37,10 @@ If you want to save your packed boxes/images and then later load them into an ap
 -}
 
 import Array exposing (Array)
-import Bytes
-import Codec.Bytes as Codec exposing (Codec)
 import Image exposing (Image)
 import Pixels exposing (Pixels)
 import Quantity exposing (Quantity(..))
+import Serialize as Codec exposing (Codec)
 
 
 {-| All of the boxes we've packed together and how large the containing region is.
@@ -93,71 +92,71 @@ type alias TextureAtlas a =
 
 {-| A codec for [`TextureAtlas`](#TextureAtlas).
 -}
-textureAtlasCodec : Codec a -> Codec (TextureAtlas a)
+textureAtlasCodec : Codec e a -> Codec e (TextureAtlas a)
 textureAtlasCodec dataCodec =
-    Codec.object TextureAtlas
+    Codec.record TextureAtlas
         |> Codec.field .packedBoxes (packedBoxesCodec dataCodec)
         |> Codec.field .atlas imageCodec
-        |> Codec.buildObject
+        |> Codec.finishRecord
 
 
-imageCodec : Codec Image
+imageCodec : Codec e Image
 imageCodec =
     Codec.bytes |> Codec.map (Image.decode >> Maybe.withDefault (Image.fromList 1 [ 0 ])) Image.toPng
 
 
-quantityCodec : Codec (Quantity Int units)
+quantityCodec : Codec e (Quantity Int units)
 quantityCodec =
-    Codec.unsignedInt32 Bytes.BE |> Codec.map Quantity.Quantity rawQuantity
+    Codec.int |> Codec.map Quantity.Quantity rawQuantity
 
 
-quantityCodecFloat : Codec (Quantity Float units)
+quantityCodecFloat : Codec e (Quantity Float units)
 quantityCodecFloat =
-    Codec.float64 |> Codec.map Quantity.Quantity rawQuantity
+    Codec.float |> Codec.map Quantity.Quantity rawQuantity
 
 
 {-| A codec for [`PackedBoxes`](#PackedBoxes) when dealing with integer values.
 -}
-packedBoxesCodec : Codec a -> Codec (PackedBoxes Int units a)
+packedBoxesCodec : Codec e a -> Codec e (PackedBoxes Int units a)
 packedBoxesCodec dataCodec =
-    Codec.object PackedBoxes
+    Codec.record PackedBoxes
         |> Codec.field .width quantityCodec
         |> Codec.field .height quantityCodec
         |> Codec.field .boxes (Codec.list (placeBoxCodec dataCodec))
-        |> Codec.buildObject
+        |> Codec.finishRecord
 
 
 {-| A codec for [`PackedBoxes`](#PackedBoxes) when dealing with floating point values.
 -}
-packedBoxesCodecFloat : Codec a -> Codec (PackedBoxes Float units a)
+packedBoxesCodecFloat : Codec e a -> Codec e (PackedBoxes Float units a)
 packedBoxesCodecFloat dataCodec =
-    Codec.object PackedBoxes
+    Codec.record PackedBoxes
         |> Codec.field .width quantityCodecFloat
         |> Codec.field .height quantityCodecFloat
         |> Codec.field .boxes (Codec.list (placeBoxCodecFloat dataCodec))
-        |> Codec.buildObject
+        |> Codec.finishRecord
 
 
-placeBoxCodec : Codec a -> Codec (PackedBox Int units a)
+placeBoxCodec : Codec e a -> Codec e (PackedBox Int units a)
 placeBoxCodec dataCodec =
-    Codec.object PackedBox
+    Codec.record PackedBox
         |> Codec.field .x quantityCodec
         |> Codec.field .y quantityCodec
         |> Codec.field .width quantityCodec
         |> Codec.field .height quantityCodec
         |> Codec.field .data dataCodec
-        |> Codec.buildObject
+        |> Codec.finishRecord
 
 
-placeBoxCodecFloat : Codec a -> Codec (PackedBox Float units a)
+placeBoxCodecFloat : Codec e a -> Codec e (PackedBox Float units a)
 placeBoxCodecFloat dataCodec =
-    Codec.object PackedBox
+    Codec.record PackedBox
         |> Codec.field .x quantityCodecFloat
         |> Codec.field .y quantityCodecFloat
         |> Codec.field .width quantityCodecFloat
         |> Codec.field .height quantityCodecFloat
         |> Codec.field .data dataCodec
-        |> Codec.buildObject
+        |> Codec.finishRecord
 
 
 mapPackedBoxes : (a -> b) -> PackedBoxes number units a -> PackedBoxes number units b
