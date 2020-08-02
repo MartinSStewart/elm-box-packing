@@ -1,7 +1,7 @@
 module Pack exposing
     ( pack, defaultConfig, Box, Config, PackedBoxes, PackedBox
     , textureAtlas, ImageBox, TextureAtlas
-    , textureAtlasCodec, packedBoxesCodec, packedBoxesCodecFloat
+    , textureAtlasCodec, TextureAtlasCodecError(..), packedBoxesCodec, packedBoxesCodecFloat
     )
 
 {-|
@@ -22,7 +22,7 @@ Functions for packing boxes together. Scroll down to the Image Packing section i
 
 # Image packing
 
-Suppose you have a lot of images and you want to load them in as a single image to reduce HTTP requests or simplify texture management in WebGL?
+Suppose you have a lot of images and you want to load them in as a single image to reduce HTTP requests or simplify texture management in WebGL.
 With these functions you can generate a texture atlas (also called a sprite sheet) to pack all the images together.
 
 @docs textureAtlas, ImageBox, TextureAtlas
@@ -30,9 +30,9 @@ With these functions you can generate a texture atlas (also called a sprite shee
 
 # Serialization
 
-If you want to save your packed boxes/images and then later load them into an app, these functions (when used with [`MartinSStewart/elm-codec-bytes`](https://package.elm-lang.org/packages/MartinSStewart/elm-codec-bytes/latest/)) should help.
+If you want to save your packed boxes/images and then later load them into your app, these functions (when used with [`elm-serialize`](https://package.elm-lang.org/packages/MartinSStewart/elm-serialize/latest/)) should help.
 
-@docs textureAtlasCodec, packedBoxesCodec, packedBoxesCodecFloat
+@docs textureAtlasCodec, TextureAtlasCodecError, packedBoxesCodec, packedBoxesCodecFloat
 
 -}
 
@@ -83,8 +83,8 @@ type alias ImageBox a =
 
 {-| A texture atlas image and accompanying data.
 Note that [`Image`](https://package.elm-lang.org/packages/justgook/elm-image/latest/Image#Image) may contain functions.
-[Don't store this data structure in you model](https://discourse.elm-lang.org/t/implications-of-storing-functions-in-model-or-msg-type/5472?u=martins).
-Instead convert `Image` into some other format such as [`Image.toPngUrl`](https://package.elm-lang.org/packages/justgook/elm-image/latest/Image#toPngUrl).
+[Don't store this data structure in you model](https://discourse.elm-lang.org/t/implications-of-storing-functions-in-model-or-msg-type/5472).
+Instead convert `Image` into a [string](https://package.elm-lang.org/packages/justgook/elm-image/latest/Image#toPngUrl) or [bytes](https://package.elm-lang.org/packages/justgook/elm-image/latest/Image#toPng) and store that.
 -}
 type alias TextureAtlas a =
     { packedBoxes : PackedBoxes Int Pixels a, atlas : Image }
@@ -92,17 +92,28 @@ type alias TextureAtlas a =
 
 {-| A codec for [`TextureAtlas`](#TextureAtlas).
 -}
-textureAtlasCodec : Codec e a -> Codec e (TextureAtlas a)
+textureAtlasCodec : Codec e a -> Codec (TextureAtlasCodecError e) (TextureAtlas a)
 textureAtlasCodec dataCodec =
     Codec.record TextureAtlas
-        |> Codec.field .packedBoxes (packedBoxesCodec dataCodec)
+        |> Codec.field .packedBoxes (packedBoxesCodec dataCodec |> Codec.mapError PackedBoxDataError)
         |> Codec.field .atlas imageCodec
         |> Codec.finishRecord
 
 
-imageCodec : Codec e Image
+imageCodec : Codec (TextureAtlasCodecError e) Image
 imageCodec =
-    Codec.bytes |> Codec.map (Image.decode >> Maybe.withDefault (Image.fromList 1 [ 0 ])) Image.toPng
+    Codec.bytes |> Codec.mapValid (Image.decode >> Result.fromMaybe FailedToParseImage) Image.toPng
+
+
+{-| These are possible errors we can get when decoding with `textureAtlasCodec`.
+
+  - `FailedToParseImage`: The image we encoded is corrupted.
+  - `PackedBoxDataError`: The extra data in `PackedBoxes` is invalid in some way.
+
+-}
+type TextureAtlasCodecError e
+    = FailedToParseImage
+    | PackedBoxDataError e
 
 
 quantityCodec : Codec e (Quantity Int units)

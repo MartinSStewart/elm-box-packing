@@ -1,10 +1,13 @@
 module Tests exposing (overlapTests, suite)
 
+import Bitwise
 import Expect exposing (Expectation)
+import Image
 import Overlapping
 import Pack exposing (Box)
 import Quantity exposing (Quantity(..))
 import Random
+import Serialize
 import Set
 import Test exposing (..)
 
@@ -169,6 +172,40 @@ suite =
         --            |> Image.toPngUrl
         --            |> Debug.log ""
         --            |> always Expect.pass
+        , test "Round trip texture atlas data" <|
+            \_ ->
+                let
+                    expected =
+                        Random.step (Random.list 20 randomBox) (Random.initialSeed 123123)
+                            |> Tuple.first
+                            |> List.map
+                                (\box ->
+                                    List.repeat
+                                        (abs <| rawQuantity box.width * rawQuantity box.height)
+                                        (Random.step
+                                            (Random.int 0 0x00FFFFFF |> Random.map (\a -> Bitwise.or a 255))
+                                            (Random.initialSeed (rawQuantity box.width + rawQuantity box.height))
+                                            |> Tuple.first
+                                        )
+                                        |> Image.fromList (abs <| rawQuantity box.width)
+                                        |> (\a -> { image = a, data = () })
+                                )
+                            |> Pack.textureAtlas { spacing = Quantity 1, powerOfTwoSize = True }
+
+                    codec =
+                        Pack.textureAtlasCodec Serialize.unit
+                in
+                expected
+                    |> Serialize.encodeToBytes codec
+                    |> Serialize.decodeFromBytes codec
+                    |> (\result ->
+                            case result of
+                                Ok actual ->
+                                    Expect.equal (Image.dimensions expected.atlas) (Image.dimensions actual.atlas)
+
+                                Err error ->
+                                    Expect.fail ("Failed to decode: " ++ Debug.toString error)
+                       )
         ]
 
 
