@@ -14,5 +14,5 @@
 
 ## 3.0.0
 
-* Add missing error type for `textAtlasCodec`. This is not a breaking change for data encoded with version 2.0.0 of this package.
+* Add missing error type for `textureAtlasCodec`. This is not a breaking change for data encoded with version 2.0.0 of this package.
 * Fix mistakes in documentation
